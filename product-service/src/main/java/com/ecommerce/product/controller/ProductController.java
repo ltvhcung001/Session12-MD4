@@ -36,6 +36,12 @@ public class ProductController {
         return ResponseEntity.ok(response);
     }
 
+    @PutMapping("/{id}/decrement-stock")
+    public ResponseEntity<Void> decrementStock(@PathVariable Long id, @RequestParam Integer quantity) {
+        productService.decrementStock(id, quantity);
+        return ResponseEntity.ok().build();
+    }
+
     @GetMapping
     public ResponseEntity<List<ProductResponseDTO>> getAllProducts() {
         List<ProductResponseDTO> responses = productService.getAllProducts();

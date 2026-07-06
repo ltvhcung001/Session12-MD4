@@ -34,6 +34,16 @@ public class OrderService {
     }
 
     public OrderResponseDTO createOrder(OrderRequestDTO requestDTO) {
+        // Decrement stock in product-service first
+        try {
+            restClient.put()
+                    .uri("http://product-service/api/v1/products/" + requestDTO.getProductId() + "/decrement-stock?quantity=" + requestDTO.getQuantity())
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã hết hàng");
+        }
+
         ProductDTO product = getProductFromProductService(requestDTO.getProductId());
         BigDecimal productPrice = product.getPrice();
         

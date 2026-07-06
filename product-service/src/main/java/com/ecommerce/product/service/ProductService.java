@@ -8,9 +8,15 @@ import com.ecommerce.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -18,6 +24,35 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final RedissonClient redissonClient;
+
+    @Transactional
+    public void decrementStock(Long id, Integer quantity) {
+        RLock lock = redissonClient.getLock("lock:product:" + id);
+        try {
+            boolean isLocked = lock.tryLock(10, 10, TimeUnit.SECONDS);
+            if (!isLocked) {
+                throw new RuntimeException("Could not acquire distributed lock for product: " + id);
+            }
+            
+            Product product = productRepository.findById(id)
+                    .orElseThrow(() -> new ProductNotFoundException("Product not found with id: " + id));
+            
+            if (product.getStockQuantity() < quantity) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã hết hàng");
+            }
+            
+            product.setStockQuantity(product.getStockQuantity() - quantity);
+            productRepository.save(product);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Lock acquisition interrupted", e);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
 
     public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
         Product product = Product.builder()
