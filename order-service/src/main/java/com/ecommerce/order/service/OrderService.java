@@ -13,6 +13,9 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 import com.ecommerce.order.dto.ProductDTO;
 
+import org.springframework.kafka.core.KafkaTemplate;
+import com.ecommerce.order.event.OrderCreatedEvent;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,10 +25,12 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final RestClient restClient;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public OrderService(OrderRepository orderRepository, RestClient.Builder restClientBuilder) {
+    public OrderService(OrderRepository orderRepository, RestClient.Builder restClientBuilder, KafkaTemplate<String, Object> kafkaTemplate) {
         this.orderRepository = orderRepository;
         this.restClient = restClientBuilder.build();
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     public OrderResponseDTO createOrder(OrderRequestDTO requestDTO) {
@@ -43,6 +48,17 @@ public class OrderService {
 
         try {
             Order savedOrder = orderRepository.save(order);
+
+            OrderCreatedEvent event = OrderCreatedEvent.builder()
+                    .orderId(savedOrder.getId())
+                    .customerId(savedOrder.getCustomerId())
+                    .productId(savedOrder.getProductId())
+                    .quantity(requestDTO.getQuantity())
+                    .totalAmount(savedOrder.getTotalAmount())
+                    .build();
+
+            kafkaTemplate.send("order-events", event);
+
             return mapToResponseDTO(savedOrder);
         } catch (Exception e) {
             throw new RuntimeException("Không thể lưu đơn hàng vào Database: " + e.getMessage());
