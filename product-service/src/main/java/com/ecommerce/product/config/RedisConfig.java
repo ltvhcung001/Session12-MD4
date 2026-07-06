@@ -9,6 +9,10 @@ import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSeriali
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import com.ecommerce.product.listener.PromotionMessageListener;
+
 import java.time.Duration;
 
 @Configuration
@@ -25,5 +29,15 @@ public class RedisConfig {
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(config)
                 .build();
+    }
+
+    @Bean
+    public RedisMessageListenerContainer redisContainer(
+            RedisConnectionFactory connectionFactory,
+            PromotionMessageListener messageListener) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(messageListener, new ChannelTopic("promotion-updates"));
+        return container;
     }
 }
