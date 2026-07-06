@@ -42,6 +42,18 @@ public class ProductController {
         return ResponseEntity.ok().build();
     }
 
+    @PostMapping("/flash-sale/start/{productId}")
+    public ResponseEntity<String> startFlashSale(@PathVariable Long productId, @RequestParam Integer stock) {
+        productService.startFlashSale(productId, stock);
+        return ResponseEntity.ok("Flash sale started for product ID: " + productId + " with stock: " + stock);
+    }
+
+    @PostMapping("/flash-sale/buy")
+    public ResponseEntity<String> buyFlashSale(@Valid @RequestBody com.ecommerce.product.dto.FlashSaleOrderRequestDTO requestDTO) {
+        productService.buyFlashSale(requestDTO);
+        return ResponseEntity.ok("Flash sale order processing requested.");
+    }
+
     @GetMapping
     public ResponseEntity<List<ProductResponseDTO>> getAllProducts() {
         List<ProductResponseDTO> responses = productService.getAllProducts();

@@ -17,6 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
+import com.ecommerce.product.dto.FlashSaleOrderRequestDTO;
+import com.ecommerce.product.event.FlashSaleOrderEvent;
+import java.math.BigDecimal;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,6 +30,66 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final RedissonClient redissonClient;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    public void startFlashSale(Long productId, Integer stock) {
+        // Initialize stock on Redis using key: flash-sale:product:{id}:stock
+        stringRedisTemplate.opsForValue().set("flash-sale:product:" + productId + ":stock", String.valueOf(stock));
+    }
+
+    public void buyFlashSale(FlashSaleOrderRequestDTO requestDTO) {
+        Long productId = requestDTO.getProductId();
+        RLock lock = redissonClient.getLock("lock:flash-sale:product:" + productId);
+        boolean isDeducted = false;
+        
+        try {
+            boolean isLocked = lock.tryLock(10, 10, TimeUnit.SECONDS);
+            if (!isLocked) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not acquire flash sale lock");
+            }
+
+            String stockKey = "flash-sale:product:" + productId + ":stock";
+            String stockVal = stringRedisTemplate.opsForValue().get(stockKey);
+            
+            if (stockVal == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm không trong chương trình Flash Sale");
+            }
+            
+            int currentStock = Integer.parseInt(stockVal);
+            if (currentStock < requestDTO.getQuantity()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã hết hàng");
+            }
+            
+            // Decrement stock in Redis
+            stringRedisTemplate.opsForValue().set(stockKey, String.valueOf(currentStock - requestDTO.getQuantity()));
+            isDeducted = true;
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lock acquisition interrupted");
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+
+        if (isDeducted) {
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new ProductNotFoundException("Product not found with id: " + productId));
+            
+            BigDecimal totalAmount = product.getPrice().multiply(BigDecimal.valueOf(requestDTO.getQuantity()));
+            
+            FlashSaleOrderEvent event = FlashSaleOrderEvent.builder()
+                    .productId(productId)
+                    .customerId(requestDTO.getCustomerId())
+                    .quantity(requestDTO.getQuantity())
+                    .totalAmount(totalAmount)
+                    .build();
+            
+            kafkaTemplate.send("flash-sale-events", event);
+        }
+    }
 
     @Transactional
     public void decrementStock(Long id, Integer quantity) {
