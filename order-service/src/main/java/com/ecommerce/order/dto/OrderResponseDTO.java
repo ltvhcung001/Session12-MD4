@@ -18,4 +18,5 @@ public class OrderResponseDTO {
     private Long productId;
     private LocalDateTime orderDate;
     private BigDecimal totalAmount;
+    private String status;
 }

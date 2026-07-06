@@ -32,4 +32,7 @@ public class Order {
 
     @Column(nullable = false)
     private BigDecimal totalAmount;
+
+    @Column(nullable = false)
+    private String status;
 }

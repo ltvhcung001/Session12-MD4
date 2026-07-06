@@ -54,6 +54,7 @@ public class OrderService {
                 .productId(requestDTO.getProductId())
                 .orderDate(LocalDateTime.now())
                 .totalAmount(totalAmount)
+                .status("PENDING")
                 .build();
 
         try {
@@ -97,6 +98,7 @@ public class OrderService {
                 .productId(order.getProductId())
                 .orderDate(order.getOrderDate())
                 .totalAmount(order.getTotalAmount())
+                .status(order.getStatus())
                 .build();
     }
 }
